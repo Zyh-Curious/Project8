@@ -1,0 +1,67 @@
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8.0
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+        MYSQL_ROOT_PASSWORD: root123456
+        MYSQL_DATABASE: message_board
+    volumes: 
+      - mysql-data:/var/lib/mysql
+    networks:
+      - app-net
+
+  backend:
+    build: .
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/'$$SERVER_PORT || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    container_name: backend
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/message_board?useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root123456
+    ports:
+      - "8080:8080"
+    networks:
+      - app-net
+
+  frontend:
+    image: nginx:alpine
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:$$HEALTH_CHECK_PORT/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    container_name: frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./Glimmer08/frontend:/app:ro
+    networks:
+      - app-net
+
+volumes:
+  mysql-data:
+
+networks:
+  app-net:
+    driver: bridge
